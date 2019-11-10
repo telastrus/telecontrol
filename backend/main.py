@@ -1,18 +1,18 @@
-import asyncio, websockets
+import asyncio, websockets, sys
+
+PASSWORD = sys.argv[-1]
 
 async def conn(websocket, path):
     active = []
+    auth = False
     async for msg in websocket:
-        vals = msg.split(",")
-        for i in set().union(active, vals):
-            if i in active and i not in vals:
-                print("Deactivating", i)
-            elif i not in active and i in vals:
-                print("Activating", i)
-        active = vals
+        print(msg)
+        if not auth and msg != 'p' + PASSWORD:
+            await websocket.send("b")
+            continue
 
 srv = websockets.serve(conn, "localhost", 11337)
-print("Starting server...")
+print(f"Starting server with password {PASSWORD}...")
 
 asyncio.get_event_loop().run_until_complete(srv)
 asyncio.get_event_loop().run_forever()
