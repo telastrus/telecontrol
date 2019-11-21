@@ -1,27 +1,39 @@
 <template>
   <div id="app">
     <h1>Telescope controller</h1>
-    <button @Click="auth">Auth</button>
-    <div class="circle-container">
-      <axis v-bind:index="1" class="btn deg30" />
-      <axis v-bind:index="2" class="btn deg150" />
-      <axis v-bind:index="3" class="btn deg270" />
+    <b-button type="is-info" @click="auth" style="margin-bottom: 2em;">Authenticate</b-button>
+    <section class="settings">
+      <b-field label="Speed"><b-numberinput v-model="speed" min="0" max="255" /></b-field>
+      <b-field label="Duration"><b-numberinput v-model="duration" step="0.01" min="0.01" /></b-field>
+    </section>
+    <div ref="panelbox" class="gridbox">
+      <action text="⤿" target="ycw" style="grid-column: 1; grid-row: 2" />
+      <action text="⤾" target="yccw" style="grid-column: 3; grid-row: 2" />
+      <action text="⤸" target="xcw" style="grid-column: 2; grid-row: 1" />
+      <action text="⤹" target="xccw" style="grid-column: 2; grid-row: 3" />
+
+      <action text="▲" target="zf"  style="grid-column: 1000; grid-row: 1"/>
+      <action text="▼" target="zb" style="grid-column: 1000; grid-row: 3" />
     </div>
   </div>
 </template>
 
 <script>
-import Axis from './Axis.vue';
+//import Axis from './Axis.vue';
+import Action from './Action.vue'
 
 export default {
   name: 'app',
   components: {
-    Axis,
+    Action,
   },
   data () {
     return {
-      status: [false, false, false],
+      ok: true,
+      loader: null,
       socket: null,
+      speed: 128,
+      duration: 1.0,
     }
   },
   mounted () {
@@ -29,10 +41,9 @@ export default {
     let self = this;
     this.socket.onmessage = (ev) => {
       let d = ev.data;
-      if (d.startsWith('e')) {
-        self.status[Number(d.charAt(1))];
-      }
+      if (d.startsWith('o')) self.end(true);
       else if (d.startsWith('b')) self.auth();
+      else if (d.startsWith('e')) self.end(false);
     };
 
     this.auth();
@@ -48,6 +59,21 @@ export default {
         trapFocus: true,
         onConfirm: (value) => self.socket.send('p' + value)
       })
+    },
+    trigger (msg) {
+      this.socket.send("a" + JSON.stringify({
+        "action": msg,
+        "speed": this.speed,
+        "duration": this.duration,
+      }))
+      this.loader = this.$buefy.loading.open({
+        container: this.$refs.panelbox.$el,
+      });
+    },
+    end (ok) {
+      if (this.loader != null) this.loader.close();
+
+      self.ok = ok;
     }
   }
 }
@@ -63,29 +89,16 @@ export default {
   margin-top: 60px;
 }
 
-/* Modified from https://stackoverflow.com/questions/12813573/position-icons-into-circle */
-.btn {
-  width: 2em;
-  height: 2em;
+.settings {
   margin: auto;
-  display: block;
-  position: absolute;
-  top: 50%; left: 50%;
-  margin: -1em;
+  width: 20em;
 }
 
-.circle-container {
-  position: relative;
-  width: 24em;
-  height: 24em;
-  padding: 2.8em;
-    /*2.8em = 2em*1.4 (2em = half the width of a link with img, 1.4 = sqrt(2))*/
+.gridbox {
+  display: grid;
   border: dashed 1px;
-  border-radius: 50%;
-  margin: 1.75em auto 0;
+  width: 16em;
+  margin: auto;
+  margin-top: 1em;
 }
-.deg0 { transform: translate(12em); } /* 12em = half the width of the wrapper */
-.deg30 { transform: rotate(30deg) translate(12em) rotate(-30deg); }
-.deg150 { transform: rotate(150deg) translate(12em) rotate(-150deg); }
-.deg270 { transform: rotate(270deg) translate(12em) rotate(-270deg); }
 </style>
