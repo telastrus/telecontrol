@@ -3,7 +3,7 @@
     <h1>Telescope controller</h1>
     <b-button type="is-info" @click="auth" style="margin-bottom: 2em;">Authenticate</b-button>
     <section class="settings">
-      <b-field label="Speed"><b-numberinput v-model="speed" step="0.01" min="-1" max="1" /></b-field>
+      <b-field label="Speed"><b-numberinput v-model="speed" step="0.01" min="0" max="1" /></b-field>
       <b-field label="Duration"><b-numberinput v-model="duration" step="0.01" min="0.01" /></b-field>
     </section>
     <div ref="panelbox" class="gridbox">
@@ -32,7 +32,7 @@ export default {
       ok: true,
       loader: null,
       socket: null,
-      speed: 0.0,
+      speed: 0.5,
       duration: 1.0,
     }
   },
