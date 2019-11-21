@@ -1,12 +1,32 @@
 import asyncio, websockets, sys, json
+from adafruit_motorkit import MotorKit
 
 PASSWORD = sys.argv[-1]
 
-def set_speed(speed):
-    print("Setting speed to", speed)
+kit = MotorKit()
+top = kit.motor1
+left = kit.motor2
+right = kit.motor3
 
-def stop_all():
-    pass
+def x(speed):
+    top.throttle = speed
+    left.throttle = -speed
+    right.throttle = -speed
+
+def y(speed):
+    top.throttle = 0
+    left.throttle = speed
+    right.throttle = -speed
+
+def set_all(speed):
+    for i in (top, left, right): i.throttle = speed
+
+ACTIONS = {'xcw': lambda s: x(s),
+           'xccw': lambda s: x(-s),
+           'ycw': lambda s: y(s),
+           'yccw': lambda s: y(-s),
+           'zf': lambda s: set_all(s),
+           'zb': lambda s: set_all(-s)}
 
 async def conn(websocket, path):
     active = []
@@ -20,9 +40,9 @@ async def conn(websocket, path):
                 await websocket.send("b")
         elif msg.startswith('a'):
             data = json.loads(msg[1:])
-            set_speed(data['speed'])
+            ACTIONS[data['action']](data['speed'])
             await asyncio.sleep(data['duration'])
-            stop_all()
+            set_all(0)
             await websocket.send('o')
 
 srv = websockets.serve(conn, "localhost", 11337)
