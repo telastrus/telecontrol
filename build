@@ -1,0 +1,7 @@
+cd $(dirname "$0")/frontend
+yarn run build
+mv dist/ ../
+cd ..
+scp -r dist/ backend/ pi@192.168.227.1:/home/pi/telecontrol
+ssh pi@192.168.227.1 /home/pi/run_tc
+
