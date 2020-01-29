@@ -1,7 +1,13 @@
 import asyncio, websockets, sys, json, argparse, collections#, gpiozero
 from datetime import datetime, timedelta
+from enum import Enum
 #from adafruit_motorkit import MotorKit
-
+class LimitState(Enum):
+    UPPER = 1
+    LOWER = 2
+    ERROR = 3
+    OK = 4
+    UNKNOWN = 5
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--password", "-p", type=str, default="")
@@ -19,25 +25,72 @@ except:
             self.motor3 = Motor(throttle=0)
     kit = MotorKit()
 
-top = kit.motor1
-left = kit.motor2
-right = kit.motor3
+class Limit:
+    def __init__(self, upper, lower, motor):
+        self.__state = LimitState.OK
+        self.upper = upper
+        self.lower = lower
+        self.motor = motor
+    
+    def update_state(self):
+        self.__state = LimitState.UNKNOWN
+        if self.upper.is_pressed:
+            self.__state = LimitState.UPPER
+            self.motor.throttle = 0
+            return False
+        elif self.lower.is_pressed:
+            if self.__state == LimitState.UPPER:
+                # Emergency stop everything
+                self.__state = LimitState.ERROR
+                kit.motor1.throttle = 0
+                kit.motor2.throttle = 0
+                kit.motor3.throttle = 0
+                raise Exception("Both limit switches are activated. This is a problem.")
+            else:
+                self.__state = LimitState.LOWER
+            self.motor.throttle = 0
+            return False
+        else:
+            self.__state = LimitState.OK
+            return True
+            
+    
+    def request_movement(self, speed):
+        if speed == None:
+            self.motor.throttle = 0
+            return True
+        elif (speed > 0 and self.__state != LimitState.UPPER) or (speed < 0 and self.__state != LimitState.LOWER):
+            self.motor.throttle = speed
+            return True
+        else:
+            return False
+
+class DummyBtn:
+    def __init__(self, i):
+        self.is_pressed = False
+
+pin = lambda i: DummyBtn(i)
+
+# TODO: Replace the dummy pins
+TOP = Limit(pin(1), pin(2), kit.motor1)
+LEFT = Limit(pin(3), pin(4), kit.motor2)
+RIGHT = Limit(pin(5), pin(6), kit.motor3)
 
 def x(speed):
-    top.throttle = speed
-    left.throttle = -speed
-    right.throttle = -speed
+    TOP.request_movement(speed)
+    LEFT.request_movement(-speed)
+    RIGHT.request_movement(-speed)
 
 def y(speed):
-    top.throttle = 0
-    left.throttle = speed
-    right.throttle = -speed
+    TOP.request_movement(None)
+    LEFT.request_movement(speed)
+    RIGHT.request_movement(-speed)
 
 def set_all(speed):
-    for i in (top, left, right): i.throttle = speed
+    for i in (TOP, LEFT, RIGHT): i.request_movement(speed)
 
 def set_individual(motor, speed):
-    getattr(kit, f'motor{motor}').throttle = speed
+    getattr(kit, f'motor{motor}').request_movement(speed)
 
 ACTIONS = {'xcw': lambda s: x(s),
            'xccw': lambda s: x(-s),
@@ -49,19 +102,10 @@ ACTIONS = {'xcw': lambda s: x(s),
            'm2': lambda s: set_individual(2, s),
            'm3': lambda s: set_individual(3, s)}
 
-#for i in [1, 2, 3]: ACTIONS[f'm{i}'] = lambda s: getattr(kit, f'motor{i}') = s
-
-class DummyBtn:
-    def __init__(self, i):
-        self.is_pressed = False
-
-pins = [DummyBtn(i) for i in [1, 2, 3, 4, 5, 6]] # TODO: Replace the [1, 2, 3, 4, 5, 6]
-
 
 # Message Codes: o - okay; b - bad password; e - error; a - perform action
-
 async def conn(websocket, path):
-    active = []
+    # active = []
     auth = PASSWORD == ''
     async for msg in websocket:
         if not auth:
@@ -73,17 +117,18 @@ async def conn(websocket, path):
         elif msg.startswith('a'):
             limit_triggered = False
             data = json.loads(msg[1:])
-            ACTIONS[data['action']](data['speed'])
+            if not ACTIONS[data['action']](data['speed']):
+                await websocket.send('Invalid move.')
             if data['duration'] > 0:
                 end = datetime.now() + timedelta(seconds=data['duration'])
                 while datetime.now() < end:
-                    for i in pins:
-                        if i.is_pressed:
+                    for i in (TOP, LEFT, RIGHT):
+                        if not i.update_state():
                             limit_triggered = True
                             break
                     if limit_triggered: break
                 set_all(0)
-            await websocket.send('o' if limit_triggered else 'e')
+            await websocket.send('OK.' if not limit_triggered else 'Limit triggered.')
 
 srv = websockets.serve(conn, "localhost", args.port)
 print(f"Starting server with arguments {args}...")
